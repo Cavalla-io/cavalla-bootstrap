@@ -2,7 +2,7 @@
 
 Minimal Ubuntu bootstrap for **AWS IoT Greengrass v2**: installs the Nucleus with automatic provisioning (`--provision true`), registers an IoT Thing, and starts the `greengrass` systemd service.
 
-This repository does **not** install Docker, clone application repos, or pull SSM secrets—only what is needed for a Thing + Greengrass Core on a fresh Ubuntu host.
+The script also installs **Docker Engine** (via [get.docker.com](https://get.docker.com), same approach as `robot_setup.sh`) and adds `ggc_user` to the `docker` group so container-based Greengrass components can run. It does not clone application repos or pull SSM secrets—only the host stack needed for a Thing + Core on a fresh Ubuntu host.
 
 ## Prerequisites (AWS account)
 
@@ -38,6 +38,7 @@ sudo -E ./greengrass_bootstrap_minimal.sh
 | `TES_ROLE_ALIAS` | **Required.** Existing IoT role alias for that IAM role. |
 | `CREATE_THING_GROUP` | Set to `1` to create `THING_GROUP` if missing (needs `iot:CreateThingGroup`). |
 | `DEPLOY_DEV_TOOLS` | Set to `1` to install the Greengrass CLI (default: `0`). |
+| `SKIP_DOCKER` | Set to `1` to skip Docker Engine install (default: `0`). |
 
 Credentials: export keys as above, or use `AWS_PROFILE` with an invoking user so the script can resolve `~/.aws` (see the script’s `ensure_aws_credentials`).
 

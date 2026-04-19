@@ -5,8 +5,9 @@
 # automatic provisioning (--provision true), which registers this host as a
 # new IoT Thing and starts the greengrass systemd service.
 #
-# This script does NOT install Docker, clone repos, or pull SSM secrets — only
-# what is needed to get a Thing + Greengrass Core running on a fresh Ubuntu.
+# Installs Docker Engine (same flow as cavalier robot_setup: get.docker.com) so
+# Greengrass components can run container images; set SKIP_DOCKER=1 to opt out.
+# Does not clone application repos or pull SSM secrets — only host + Thing + Core.
 #
 # Usage (preserve credentials through sudo):
 #   export AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=...   # and AWS_SESSION_TOKEN if using STS
@@ -27,6 +28,7 @@
 #   TES_ROLE_ALIAS       EXISTING IoT role alias for that IAM role (required)
 #   CREATE_THING_GROUP   if set to 1, create THING_GROUP when missing (needs iot:CreateThingGroup)
 #   DEPLOY_DEV_TOOLS     if set to 1, install Greengrass CLI (default: 0)
+#   SKIP_DOCKER          if set to 1, skip Docker Engine install (default: 0)
 #
 # AWS credentials: use sudo -E with exported keys, or AWS_PROFILE (see ensure_aws below).
 #
@@ -46,6 +48,7 @@ TES_ROLE_NAME="${TES_ROLE_NAME:-}"
 TES_ROLE_ALIAS="${TES_ROLE_ALIAS:-}"
 CREATE_THING_GROUP="${CREATE_THING_GROUP:-0}"
 DEPLOY_DEV_TOOLS="${DEPLOY_DEV_TOOLS:-0}"
+SKIP_DOCKER="${SKIP_DOCKER:-0}"
 
 info() { echo "[gg-minimal] $*"; }
 die() { echo "[gg-minimal] ERROR: $*" >&2; exit 1; }
@@ -117,6 +120,33 @@ ensure_greengrass_user() {
     groupadd --system ggc_group
   fi
   usermod -aG ggc_group ggc_user || true
+  if getent group docker >/dev/null 2>&1; then
+    usermod -aG docker ggc_user || true
+  fi
+}
+
+install_docker() {
+  if [[ "${SKIP_DOCKER}" == "1" ]]; then
+    info "SKIP_DOCKER=1 — skipping Docker install."
+    return 0
+  fi
+
+  if command -v docker >/dev/null 2>&1; then
+    info "Docker already installed ($(docker --version 2>&1))."
+    return 0
+  fi
+
+  info "Installing Docker Engine (https://get.docker.com)..."
+  curl -fsSL https://get.docker.com | sh
+
+  command -v docker >/dev/null 2>&1 || die "Docker install finished but docker was not found in PATH."
+
+  if systemctl list-unit-files 2>/dev/null | grep -q '^docker\.service'; then
+    systemctl enable docker 2>/dev/null || true
+    systemctl start docker 2>/dev/null || true
+  fi
+
+  info "Docker: $(docker --version 2>&1)"
 }
 
 install_aws_cli_v2() {
@@ -199,6 +229,7 @@ install_greengrass() {
 main() {
   # Install apt packages first so `aws` exists for profile auth and thing-group checks.
   install_prereqs
+  install_docker
   ensure_aws_credentials
   info "AWS account: $(aws sts get-caller-identity --query Account --output text)"
   if [[ -z "${THING_GROUP}" ]]; then
@@ -217,6 +248,7 @@ main() {
 
   echo
   info "Done. Check: sudo systemctl status greengrass"
+  info "Docker (unless SKIP_DOCKER=1): sudo systemctl status docker && sudo docker run --rm hello-world"
   info "CLI (if DEPLOY_DEV_TOOLS=1): sudo /greengrass/v2/bin/greengrass-cli component list"
   info "Logs: sudo tail -f /greengrass/v2/logs/greengrass.log"
 }
