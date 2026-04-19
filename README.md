@@ -1,71 +1,76 @@
 # cavalla-bootstrap
 
-Minimal Ubuntu bootstrap for **AWS IoT Greengrass v2**: installs the Nucleus with automatic provisioning (`--provision true`), registers an IoT Thing, and starts the `greengrass` systemd service.
+Public **Greengrass bootstrap** for Cavalla edge hosts — **one script**: [`greengrass_bootstrap.sh`](greengrass_bootstrap.sh).
 
-The script also installs **Docker Engine** (via [get.docker.com](https://get.docker.com), same approach as `robot_setup.sh`) and adds `ggc_user` to the `docker` group so container-based Greengrass components can run. It does not clone application repos or pull SSM secrets—only the host stack needed for a Thing + Core on a fresh Ubuntu host.
+## Modes
 
-## Prerequisites (AWS account)
+| Mode | Command |
+|------|---------|
+| **Minimal** (Docker + Greengrass Thing/Core only) | `sudo -E ./greengrass_bootstrap.sh <thing-name>` |
+| **Full Cavalier robot** (Jetson-style host, InfraStack outputs, SSM deploy key, `cavalier_system` clone, ECR cron, `/etc/cavalier/bootstrap.json`) | `sudo -E ./greengrass_bootstrap.sh --full-cavalier-robot <thing-name> [--stage dev\|prod] [--region …] [--skip-tailscale]` |
 
-Deploy **Cavalier InfraStack** (CDK) in the target account/region so the IoT policy, TES IAM role, IoT role alias, and fleet thing groups exist with the expected names. The script defaults to the **dev** fleet and CDK naming (`CavalierGreengrassPolicy-dev-<account6>`, etc.); use `FLEET_ENV=prod` for prod. For a fully custom AWS layout, set `THING_GROUP`, `THING_POLICY_NAME`, `TES_ROLE_ALIAS`, and/or `TES_ROLE_NAME` explicitly.
+Full mode is the former `robot_setup.sh` logic, inlined into this file.
 
-See also the [Greengrass manual installation guide](https://docs.aws.amazon.com/greengrass/v2/developerguide/manual-installation.html).
+Equivalent for full without the flag: `CAVALIER_FULL_ROBOT_BOOTSTRAP=1 sudo -E ./greengrass_bootstrap.sh <thing-name> …`
 
-## Usage
+### Prerequisites (AWS)
 
-Run as **root** and preserve environment so AWS credentials reach `sudo` (`sudo -E`).
+Deploy **Cavalier InfraStack** (CDK). For **full** mode, store the GitHub deploy key in SSM at `/cavalier/<stage>/deploy-ssh-key` (see Cavalla `cavalier_system` infra docs).
 
-```bash
-export AWS_PROFILE=your-profile   # or export AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY [/ AWS_SESSION_TOKEN]
-sudo -E ./greengrass_bootstrap_minimal.sh my-device-01
-```
-
-Or set the thing name via the environment:
+### Install from GitHub (pin a tag)
 
 ```bash
-export THING_NAME=my-device-01
-sudo -E ./greengrass_bootstrap_minimal.sh
+TAG=v0.1.0   # use a real release tag in production
+curl -fsSL -o greengrass_bootstrap.sh \
+  "https://raw.githubusercontent.com/Cavalla-io/cavalla-bootstrap/${TAG}/greengrass_bootstrap.sh"
+chmod +x greengrass_bootstrap.sh
+# review the script, then on the robot:
+export AWS_PROFILE=your-profile   # or temporary keys
+sudo -E ./greengrass_bootstrap.sh --full-cavalier-robot my-robot-thing --stage dev
 ```
 
-## Environment variables
+### Backward compatibility
+
+[`greengrass_bootstrap_minimal.sh`](greengrass_bootstrap_minimal.sh) is a thin `exec` wrapper to `greengrass_bootstrap.sh` so old `curl` URLs and playbooks keep working.
+
+---
+
+## Minimal path (details)
+
+Installs **AWS IoT Greengrass v2** with automatic provisioning, **Docker Engine** ([get.docker.com](https://get.docker.com)), and starts `greengrass`. Defaults match Cavalla InfraStack CDK naming (`cavalier-${FLEET_ENV}-<account6>-robots`, etc.); use `FLEET_ENV=prod` for prod.
+
+See the [Greengrass manual installation guide](https://docs.aws.amazon.com/greengrass/v2/developerguide/manual-installation.html).
+
+### Environment variables (minimal section of the script)
 
 | Variable | Description |
 |----------|-------------|
-| `THING_NAME` | IoT Thing name (optional positional first argument overrides). |
+| `THING_NAME` | IoT Thing name (positional first argument overrides). |
 | `AWS_REGION` | Default: `us-east-1`. |
-| `FLEET_ENV` | `dev` or `prod` — selects the shared fleet group (default: `dev`). |
-| `THING_GROUP` | Override thing group. Default: `cavalier-${FLEET_ENV}-<last 6 digits of account>-robots` (CDK fleet groups). |
-| `THING_POLICY_NAME` | Override IoT policy for the core cert. Default: `CavalierGreengrassPolicy-${FLEET_ENV}-<account6>`. |
-| `TES_ROLE_NAME` | Override IAM role name for token exchange. Default: IAM role behind `TES_ROLE_ALIAS` (from `describe-role-alias`). |
-| `TES_ROLE_ALIAS` | Override IoT role alias. Default: `CavalierGreengrassRoleAlias-${FLEET_ENV}-<account6>`. |
-| `CREATE_THING_GROUP` | Set to `1` to create `THING_GROUP` if missing (needs `iot:CreateThingGroup`). |
-| `DEPLOY_DEV_TOOLS` | Set to `1` to install the Greengrass CLI (default: `0`). |
-| `SKIP_DOCKER` | Set to `1` to skip Docker Engine install (default: `0`). |
-| `GREENGRASS_NUCLEUS_VERSION` | Pinned nucleus zip version (default: `2.17.0`). Must stay compatible with `aws.greengrass.Cli` in your Cavalla fleet deployment. |
-| `GREENGRASS_NUCLEUS_ZIP_URL` | Override the full download URL (defaults to CloudFront `greengrass-${GREENGRASS_NUCLEUS_VERSION}.zip`). |
+| `FLEET_ENV` | `dev` or `prod` (default: `dev`). |
+| `THING_GROUP` | Override thing group. |
+| `THING_POLICY_NAME` | Override IoT policy for the core cert. |
+| `TES_ROLE_NAME` | Override IAM role for token exchange. |
+| `TES_ROLE_ALIAS` | Override IoT role alias. |
+| `CREATE_THING_GROUP` | Set to `1` to create `THING_GROUP` if missing. |
+| `DEPLOY_DEV_TOOLS` | Set to `0` to skip local Greengrass CLI (default: `1`). |
+| `SKIP_DOCKER` | Set to `1` to skip Docker (default: `0`). |
+| `GREENGRASS_NUCLEUS_VERSION` | Pinned nucleus zip (default: `2.17.0`). |
+| `GREENGRASS_NUCLEUS_ZIP_URL` | Override nucleus zip URL. |
 
-Credentials: export keys as above, or use `AWS_PROFILE` with an invoking user so the script can resolve `~/.aws` (see the script’s `ensure_aws_credentials`).
+Full mode adds **`STAGE`**, **`CDK_STACK_NAME`**, **`SKIP_TAILSCALE`**, **`CAVALIER_DEPLOY_USER`**, etc.; see the script header and inline comments.
 
-## Install from GitHub (pin a tag)
-
-Prefer a **release tag** (or commit SHA) over moving `main`:
-
-```bash
-TAG=v0.1.0   # replace with the tag you want
-curl -fsSL -o greengrass_bootstrap_minimal.sh \
-  "https://raw.githubusercontent.com/Cavalla-io/cavalla-bootstrap/${TAG}/greengrass_bootstrap_minimal.sh"
-chmod +x greengrass_bootstrap_minimal.sh
-# review the file, then run with sudo -E as above
-```
+---
 
 ## After install
 
 - Status: `sudo systemctl status greengrass`
 - Logs: `sudo tail -f /greengrass/v2/logs/greengrass.log`
-- CLI (if `DEPLOY_DEV_TOOLS=1`): `sudo /greengrass/v2/bin/greengrass-cli component list`
+- CLI (unless disabled): `sudo /greengrass/v2/bin/greengrass-cli component list`
 
 ## Security notes
 
-- Do **not** commit AWS credentials. The script only reads them from the environment or standard AWS config paths.
+- Do **not** commit AWS credentials. Scripts read credentials from the environment or standard AWS config paths.
 - Review any remote script before executing it as root.
 
 ## License
