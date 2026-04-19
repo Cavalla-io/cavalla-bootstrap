@@ -10,32 +10,34 @@
 # Does not clone application repos or pull SSM secrets — only host + Thing + Core.
 #
 # Usage (preserve credentials through sudo):
-#   export AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=...   # and AWS_SESSION_TOKEN if using STS
-#   export THING_POLICY_NAME=... TES_ROLE_NAME=... TES_ROLE_ALIAS=...
+#   export AWS_PROFILE=...   # or export AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY [/ AWS_SESSION_TOKEN]
 #   sudo -E ./greengrass_bootstrap_minimal.sh my-device-01
 #
-# Or pass everything via env and no positional arg:
-#   export THING_NAME=my-device-01
-#   sudo -E ./greengrass_bootstrap_minimal.sh
+# Or: export THING_NAME=my-device-01 && sudo -E ./greengrass_bootstrap_minimal.sh
+#
+# Defaults (after STS resolves the account) match Cavalla InfraStack CDK naming:
+#   THING_GROUP        cavalier-${FLEET_ENV}-<last6(account)>-robots  (FLEET_ENV defaults to dev)
+#   THING_POLICY_NAME  CavalierGreengrassPolicy-${FLEET_ENV}-<last6>
+#   TES_ROLE_ALIAS     CavalierGreengrassRoleAlias-${FLEET_ENV}-<last6>
+#   TES_ROLE_NAME      IAM role name behind that alias (from describe-role-alias)
+# Override any of the above with env vars if your account uses different names.
 #
 # Environment:
 #   THING_NAME           IoT Thing name (positional $1 overrides)
 #   AWS_REGION           default: us-east-1
-#   FLEET_ENV            dev or prod — shared fleet group suffix (default: dev)
-#   THING_GROUP          If unset, cavalier-${FLEET_ENV}-<account6>-robots (CDK fleet groups)
-#   THING_POLICY_NAME    Name of an EXISTING IoT policy to attach to the core cert (required)
-#   TES_ROLE_NAME        IAM role name used for Greengrass Token Exchange (required)
-#   TES_ROLE_ALIAS       EXISTING IoT role alias for that IAM role (required)
+#   FLEET_ENV            dev or prod — fleet suffix for group + IoT policy/alias names (default: dev)
+#   THING_GROUP          Override thing group (default: cavalier-${FLEET_ENV}-<account6>-robots)
+#   THING_POLICY_NAME    Override IoT policy for the core certificate (default: CDK pattern above)
+#   TES_ROLE_NAME        Override IAM role name for token exchange (default: from role alias)
+#   TES_ROLE_ALIAS       Override IoT role alias (default: CDK pattern above)
 #   CREATE_THING_GROUP   if set to 1, create THING_GROUP when missing (needs iot:CreateThingGroup)
 #   DEPLOY_DEV_TOOLS     if set to 1, install Greengrass CLI (default: 0)
 #   SKIP_DOCKER          if set to 1, skip Docker Engine install (default: 0)
 #
-# AWS credentials: use sudo -E with exported keys, or AWS_PROFILE (see ensure_aws below).
+# AWS credentials: use sudo -E with exported keys, or AWS_PROFILE (see ensure_aws_credentials).
 #
-# One-time cloud setup (not done by this script):
-#   - Create the IoT policy, IAM TES role, and IoT role alias Greengrass expects.
-#   - Create the thing group (or set CREATE_THING_GROUP=1 with creds that allow it).
-#   See: https://docs.aws.amazon.com/greengrass/v2/developerguide/manual-installation.html
+# One-time cloud: deploy Cavalla InfraStack (or create equivalent IoT policy, TES role, role alias,
+# and thing group). See: https://docs.aws.amazon.com/greengrass/v2/developerguide/manual-installation.html
 
 set -euo pipefail
 
@@ -59,10 +61,6 @@ fi
 
 if [[ -z "${THING_NAME}" ]]; then
   die "THING_NAME is required (export THING_NAME=... or pass as first argument)."
-fi
-
-if [[ -z "${THING_POLICY_NAME}" || -z "${TES_ROLE_NAME}" || -z "${TES_ROLE_ALIAS}" ]]; then
-  die "Set THING_POLICY_NAME, TES_ROLE_NAME, and TES_ROLE_ALIAS to existing AWS resources. See script header comments."
 fi
 
 case "${FLEET_ENV}" in
@@ -96,7 +94,40 @@ ensure_aws_credentials() {
     return 0
   fi
 
-  die "No AWS credentials found. Export AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY (and AWS_SESSION_TOKEN if needed) and run: sudo -E $0 ..."
+  die "No AWS credentials found. Use sudo -E and export AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY (and AWS_SESSION_TOKEN if needed), or export AWS_PROFILE=... before sudo -E."
+}
+
+# Fill THING_POLICY_NAME, TES_ROLE_ALIAS, TES_ROLE_NAME when unset — matches cavalier InfraStack CDK.
+resolve_greengrass_names_from_account() {
+  local acct suf resource_suffix role_arn
+  acct="$(aws sts get-caller-identity --query Account --output text)"
+  [[ "${#acct}" -eq 12 ]] || die "Could not read a 12-digit AWS account id from STS (got '${acct}')."
+  suf="${acct: -6}"
+  resource_suffix="${FLEET_ENV}-${suf}"
+
+  if [[ -z "${THING_GROUP}" ]]; then
+    THING_GROUP="cavalier-${FLEET_ENV}-${suf}-robots"
+    info "Using fleet thing group '${THING_GROUP}' (FLEET_ENV=${FLEET_ENV})."
+  fi
+
+  if [[ -z "${THING_POLICY_NAME}" ]]; then
+    THING_POLICY_NAME="CavalierGreengrassPolicy-${resource_suffix}"
+    info "Using thing policy name '${THING_POLICY_NAME}'."
+  fi
+  if [[ -z "${TES_ROLE_ALIAS}" ]]; then
+    TES_ROLE_ALIAS="CavalierGreengrassRoleAlias-${resource_suffix}"
+    info "Using TES role alias '${TES_ROLE_ALIAS}'."
+  fi
+  if [[ -z "${TES_ROLE_NAME}" ]]; then
+    role_arn="$(aws iot describe-role-alias --region "${AWS_REGION}" --role-alias "${TES_ROLE_ALIAS}" \
+      --query 'roleAliasDescription.roleArn' --output text 2>/dev/null || true)"
+    if [[ "${role_arn}" == arn:aws:iam:* ]]; then
+      TES_ROLE_NAME="${role_arn##*/}"
+      info "Resolved TES IAM role name '${TES_ROLE_NAME}' from role alias."
+    else
+      die "IoT role alias '${TES_ROLE_ALIAS}' not found in ${AWS_REGION}. Deploy InfraStack (CDK) in this account/region, or set TES_ROLE_ALIAS / TES_ROLE_NAME explicitly."
+    fi
+  fi
 }
 
 ensure_thing_group() {
@@ -232,16 +263,7 @@ main() {
   install_docker
   ensure_aws_credentials
   info "AWS account: $(aws sts get-caller-identity --query Account --output text)"
-  if [[ -z "${THING_GROUP}" ]]; then
-    acct="$(aws sts get-caller-identity --query Account --output text)"
-    if [[ "${#acct}" -eq 12 ]]; then
-      suf="${acct: -6}"
-      THING_GROUP="cavalier-${FLEET_ENV}-${suf}-robots"
-    else
-      die "Could not resolve AWS account for default THING_GROUP; set THING_GROUP explicitly."
-    fi
-    info "Using fleet thing group '${THING_GROUP}' (FLEET_ENV=${FLEET_ENV})."
-  fi
+  resolve_greengrass_names_from_account
   ensure_thing_group
   ensure_greengrass_user
   install_greengrass

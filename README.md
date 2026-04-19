@@ -6,19 +6,20 @@ The script also installs **Docker Engine** (via [get.docker.com](https://get.doc
 
 ## Prerequisites (AWS account)
 
-Create (outside this script) the IoT policy, IAM role for token exchange (TES), IoT role alias, and optionally the thing group. See the [Greengrass manual installation guide](https://docs.aws.amazon.com/greengrass/v2/developerguide/manual-installation.html).
+Deploy **Cavalier InfraStack** (CDK) in the target account/region so the IoT policy, TES IAM role, IoT role alias, and fleet thing groups exist with the expected names. The script defaults to the **dev** fleet and CDK naming (`CavalierGreengrassPolicy-dev-<account6>`, etc.); use `FLEET_ENV=prod` for prod. For a fully custom AWS layout, set `THING_GROUP`, `THING_POLICY_NAME`, `TES_ROLE_ALIAS`, and/or `TES_ROLE_NAME` explicitly.
+
+See also the [Greengrass manual installation guide](https://docs.aws.amazon.com/greengrass/v2/developerguide/manual-installation.html).
 
 ## Usage
 
 Run as **root** and preserve environment so AWS credentials reach `sudo` (`sudo -E`).
 
 ```bash
-export AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=...   # plus AWS_SESSION_TOKEN if using STS
-export THING_POLICY_NAME=... TES_ROLE_NAME=... TES_ROLE_ALIAS=...
+export AWS_PROFILE=your-profile   # or export AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY [/ AWS_SESSION_TOKEN]
 sudo -E ./greengrass_bootstrap_minimal.sh my-device-01
 ```
 
-Or set the thing name only via the environment:
+Or set the thing name via the environment:
 
 ```bash
 export THING_NAME=my-device-01
@@ -32,10 +33,10 @@ sudo -E ./greengrass_bootstrap_minimal.sh
 | `THING_NAME` | IoT Thing name (optional positional first argument overrides). |
 | `AWS_REGION` | Default: `us-east-1`. |
 | `FLEET_ENV` | `dev` or `prod` — selects the shared fleet group (default: `dev`). |
-| `THING_GROUP` | Override thing group name. If unset, `cavalier-${FLEET_ENV}-<last 6 digits of account>-robots` (matches CDK `DevThingGroupName` / `ProdThingGroupName`). |
-| `THING_POLICY_NAME` | **Required.** Existing IoT policy attached to the core certificate. |
-| `TES_ROLE_NAME` | **Required.** IAM role name for Greengrass token exchange. |
-| `TES_ROLE_ALIAS` | **Required.** Existing IoT role alias for that IAM role. |
+| `THING_GROUP` | Override thing group. Default: `cavalier-${FLEET_ENV}-<last 6 digits of account>-robots` (CDK fleet groups). |
+| `THING_POLICY_NAME` | Override IoT policy for the core cert. Default: `CavalierGreengrassPolicy-${FLEET_ENV}-<account6>`. |
+| `TES_ROLE_NAME` | Override IAM role name for token exchange. Default: IAM role behind `TES_ROLE_ALIAS` (from `describe-role-alias`). |
+| `TES_ROLE_ALIAS` | Override IoT role alias. Default: `CavalierGreengrassRoleAlias-${FLEET_ENV}-<account6>`. |
 | `CREATE_THING_GROUP` | Set to `1` to create `THING_GROUP` if missing (needs `iot:CreateThingGroup`). |
 | `DEPLOY_DEV_TOOLS` | Set to `1` to install the Greengrass CLI (default: `0`). |
 | `SKIP_DOCKER` | Set to `1` to skip Docker Engine install (default: `0`). |
