@@ -230,7 +230,8 @@ install_prereqs() {
   info "AWS CLI: $(aws --version 2>&1)"
 }
 
-install_greengrass() {
+# Subshell so EXIT cleanup runs before locals go out of scope (avoids tmp_zip unbound with set -u).
+install_greengrass() (
   if [[ -d /greengrass/v2 ]] && systemctl is-active --quiet greengrass.service 2>/dev/null; then
     info "Greengrass already installed and running; skipping."
     if [[ "${DEPLOY_DEV_TOOLS}" == "1" ]]; then
@@ -239,10 +240,9 @@ install_greengrass() {
       info "  sudo systemctl stop greengrass && sudo rm -rf /greengrass/v2 && sudo -E $0 ..."
     fi
     info "To reinstall: sudo systemctl stop greengrass && sudo rm -rf /greengrass/v2 && re-run this script."
-    return 0
+    exit 0
   fi
 
-  local tmp_zip tmp_dir
   tmp_zip="$(mktemp /tmp/gg-nucleus-XXXXXX.zip)"
   tmp_dir="$(mktemp -d /tmp/GreengrassInstaller-XXXXXX)"
   trap 'rm -f "${tmp_zip}"; rm -rf "${tmp_dir}"' EXIT
@@ -251,10 +251,10 @@ install_greengrass() {
   curl -fsSL "https://d2s8p88vqu9w66.cloudfront.net/releases/greengrass-nucleus-latest.zip" -o "${tmp_zip}"
   unzip -q "${tmp_zip}" -d "${tmp_dir}"
 
-  local jar="${tmp_dir}/lib/Greengrass.jar"
+  jar="${tmp_dir}/lib/Greengrass.jar"
   [[ -f "${jar}" ]] || die "Greengrass.jar missing after unzip."
 
-  local dev_tools_flag="false"
+  dev_tools_flag="false"
   [[ "${DEPLOY_DEV_TOOLS}" == "1" ]] && dev_tools_flag="true"
 
   info "Installing and provisioning (Thing=${THING_NAME}, group=${THING_GROUP})..."
@@ -271,7 +271,7 @@ install_greengrass() {
     --provision true \
     --setup-system-service true \
     --deploy-dev-tools "${dev_tools_flag}"
-}
+)
 
 main() {
   # Install apt packages first so `aws` exists for profile auth and thing-group checks.
