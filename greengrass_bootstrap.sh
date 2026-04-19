@@ -163,6 +163,14 @@ else
   echo "--- Docker already installed ---"
 fi
 
+# Fix ownership of the invoking user's .docker dir — running docker under
+# sudo can create ~/.docker/config.json owned by root.
+_deploy_user="$(deploy_user)"
+_deploy_home="$(eval echo "~${_deploy_user}")"
+if [[ -d "${_deploy_home}/.docker" ]]; then
+  chown -R "${_deploy_user}:$(id -gn "${_deploy_user}")" "${_deploy_home}/.docker"
+fi
+
 # NVIDIA container toolkit (verify, don't install -- comes with JetPack)
 if command -v nvidia-container-cli >/dev/null 2>&1; then
   echo "--- NVIDIA container toolkit present ---"
@@ -174,8 +182,6 @@ else
 fi
 
 # uv (Python package manager for admin API + adamo services)
-_deploy_user="$(deploy_user)"
-_deploy_home="$(eval echo "~${_deploy_user}")"
 if ! sudo -u "${_deploy_user}" bash -lc 'command -v uv' >/dev/null 2>&1; then
   echo "--- Installing uv for ${_deploy_user} ---"
   sudo -u "${_deploy_user}" -H bash -lc \
@@ -627,6 +633,10 @@ ensure_greengrass_user() {
   usermod -aG ggc_group ggc_user || true
   if getent group docker >/dev/null 2>&1; then
     usermod -aG docker ggc_user || true
+    # Also add the invoking (deploy) user so they can run docker without sudo
+    if [[ -n "${SUDO_USER:-}" && "${SUDO_USER}" != "ggc_user" ]]; then
+      usermod -aG docker "${SUDO_USER}" || true
+    fi
   fi
 }
 
@@ -638,20 +648,30 @@ install_docker() {
 
   if command -v docker >/dev/null 2>&1; then
     info "Docker already installed ($(docker --version 2>&1))."
-    return 0
+  else
+    info "Installing Docker Engine (https://get.docker.com)..."
+    curl -fsSL https://get.docker.com | sh
+
+    command -v docker >/dev/null 2>&1 || die "Docker install finished but docker was not found in PATH."
+
+    if systemctl list-unit-files 2>/dev/null | grep -q '^docker\.service'; then
+      systemctl enable docker 2>/dev/null || true
+      systemctl start docker 2>/dev/null || true
+    fi
+
+    info "Docker: $(docker --version 2>&1)"
   fi
 
-  info "Installing Docker Engine (https://get.docker.com)..."
-  curl -fsSL https://get.docker.com | sh
-
-  command -v docker >/dev/null 2>&1 || die "Docker install finished but docker was not found in PATH."
-
-  if systemctl list-unit-files 2>/dev/null | grep -q '^docker\.service'; then
-    systemctl enable docker 2>/dev/null || true
-    systemctl start docker 2>/dev/null || true
+  # Fix ownership of the invoking user's .docker dir — running docker under
+  # sudo can create ~/.docker/config.json owned by root, breaking subsequent
+  # non-sudo docker calls with "permission denied".
+  if [[ -n "${SUDO_USER:-}" ]]; then
+    local _user_home
+    _user_home="$(eval echo "~${SUDO_USER}")"
+    if [[ -d "${_user_home}/.docker" ]]; then
+      chown -R "${SUDO_USER}:$(id -gn "${SUDO_USER}")" "${_user_home}/.docker"
+    fi
   fi
-
-  info "Docker: $(docker --version 2>&1)"
 }
 
 install_aws_cli_v2() {
