@@ -31,7 +31,8 @@ sudo -E ./greengrass_bootstrap_minimal.sh
 |----------|-------------|
 | `THING_NAME` | IoT Thing name (optional positional first argument overrides). |
 | `AWS_REGION` | Default: `us-east-1`. |
-| `THING_GROUP` | Thing group the core joins. Default: `${THING_NAME}-group`. |
+| `FLEET_ENV` | `dev` or `prod` — selects the shared fleet group (default: `dev`). |
+| `THING_GROUP` | Override thing group name. If unset, `cavalier-${FLEET_ENV}-<last 6 digits of account>-robots` (matches CDK `DevThingGroupName` / `ProdThingGroupName`). |
 | `THING_POLICY_NAME` | **Required.** Existing IoT policy attached to the core certificate. |
 | `TES_ROLE_NAME` | **Required.** IAM role name for Greengrass token exchange. |
 | `TES_ROLE_ALIAS` | **Required.** Existing IoT role alias for that IAM role. |
@@ -47,12 +48,10 @@ Prefer a **release tag** (or commit SHA) over moving `main`:
 ```bash
 TAG=v0.1.0   # replace with the tag you want
 curl -fsSL -o greengrass_bootstrap_minimal.sh \
-  "https://raw.githubusercontent.com/YOUR_ORG/cavalla-bootstrap/${TAG}/greengrass_bootstrap_minimal.sh"
+  "https://raw.githubusercontent.com/Cavalla-io/cavalla-bootstrap/${TAG}/greengrass_bootstrap_minimal.sh"
 chmod +x greengrass_bootstrap_minimal.sh
 # review the file, then run with sudo -E as above
 ```
-
-Replace `YOUR_ORG` with your GitHub user or organization name.
 
 ## After install
 

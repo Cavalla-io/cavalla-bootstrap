@@ -20,7 +20,8 @@
 # Environment:
 #   THING_NAME           IoT Thing name (positional $1 overrides)
 #   AWS_REGION           default: us-east-1
-#   THING_GROUP          Thing group this core joins (default: ${THING_NAME}-group)
+#   FLEET_ENV            dev or prod — shared fleet group suffix (default: dev)
+#   THING_GROUP          If unset, cavalier-${FLEET_ENV}-<account6>-robots (CDK fleet groups)
 #   THING_POLICY_NAME    Name of an EXISTING IoT policy to attach to the core cert (required)
 #   TES_ROLE_NAME        IAM role name used for Greengrass Token Exchange (required)
 #   TES_ROLE_ALIAS       EXISTING IoT role alias for that IAM role (required)
@@ -39,6 +40,7 @@ set -euo pipefail
 THING_NAME="${THING_NAME:-${1:-}}"
 AWS_REGION="${AWS_REGION:-us-east-1}"
 THING_GROUP="${THING_GROUP:-}"
+FLEET_ENV="${FLEET_ENV:-dev}"
 THING_POLICY_NAME="${THING_POLICY_NAME:-}"
 TES_ROLE_NAME="${TES_ROLE_NAME:-}"
 TES_ROLE_ALIAS="${TES_ROLE_ALIAS:-}"
@@ -60,9 +62,10 @@ if [[ -z "${THING_POLICY_NAME}" || -z "${TES_ROLE_NAME}" || -z "${TES_ROLE_ALIAS
   die "Set THING_POLICY_NAME, TES_ROLE_NAME, and TES_ROLE_ALIAS to existing AWS resources. See script header comments."
 fi
 
-if [[ -z "${THING_GROUP}" ]]; then
-  THING_GROUP="${THING_NAME}-group"
-fi
+case "${FLEET_ENV}" in
+  dev|prod) ;;
+  *) die "FLEET_ENV must be dev or prod (got '${FLEET_ENV}')." ;;
+esac
 
 ensure_aws_credentials() {
   if [[ -n "${AWS_ACCESS_KEY_ID:-}" && -n "${AWS_SECRET_ACCESS_KEY:-}" ]]; then
@@ -198,6 +201,16 @@ main() {
   install_prereqs
   ensure_aws_credentials
   info "AWS account: $(aws sts get-caller-identity --query Account --output text)"
+  if [[ -z "${THING_GROUP}" ]]; then
+    acct="$(aws sts get-caller-identity --query Account --output text)"
+    if [[ "${#acct}" -eq 12 ]]; then
+      suf="${acct: -6}"
+      THING_GROUP="cavalier-${FLEET_ENV}-${suf}-robots"
+    else
+      die "Could not resolve AWS account for default THING_GROUP; set THING_GROUP explicitly."
+    fi
+    info "Using fleet thing group '${THING_GROUP}' (FLEET_ENV=${FLEET_ENV})."
+  fi
   ensure_thing_group
   ensure_greengrass_user
   install_greengrass
