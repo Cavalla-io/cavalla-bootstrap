@@ -31,7 +31,7 @@
 #   TES_ROLE_NAME        Override IAM role name for token exchange (default: from role alias)
 #   TES_ROLE_ALIAS       Override IoT role alias (default: CDK pattern above)
 #   CREATE_THING_GROUP   if set to 1, create THING_GROUP when missing (needs iot:CreateThingGroup)
-#   DEPLOY_DEV_TOOLS     if set to 1, install Greengrass CLI (default: 0)
+#   DEPLOY_DEV_TOOLS     if set to 1, pass --deploy-dev-tools true on first install only (default: 0)
 #   SKIP_DOCKER          if set to 1, skip Docker Engine install (default: 0)
 #
 # AWS credentials: use sudo -E with exported keys, or AWS_PROFILE (see ensure_aws_credentials).
@@ -233,6 +233,11 @@ install_prereqs() {
 install_greengrass() {
   if [[ -d /greengrass/v2 ]] && systemctl is-active --quiet greengrass.service 2>/dev/null; then
     info "Greengrass already installed and running; skipping."
+    if [[ "${DEPLOY_DEV_TOOLS}" == "1" ]]; then
+      info "DEPLOY_DEV_TOOLS=1 only applies during first-time install (--deploy-dev-tools). It was not re-run."
+      info "For greengrass-cli: use fleet deployment aws.greengrass.Cli when healthy, or reinstall:"
+      info "  sudo systemctl stop greengrass && sudo rm -rf /greengrass/v2 && sudo -E $0 ..."
+    fi
     info "To reinstall: sudo systemctl stop greengrass && sudo rm -rf /greengrass/v2 && re-run this script."
     return 0
   fi
