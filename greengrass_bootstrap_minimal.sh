@@ -117,6 +117,8 @@ resolve_greengrass_names_from_account() {
   if [[ -z "${TES_ROLE_ALIAS}" ]]; then
     TES_ROLE_ALIAS="CavalierGreengrassRoleAlias-${resource_suffix}"
     info "Using TES role alias '${TES_ROLE_ALIAS}'."
+  else
+    info "Using TES role alias from environment '${TES_ROLE_ALIAS}' (unset TES_ROLE_ALIAS to use CDK default for this account)."
   fi
   if [[ -z "${TES_ROLE_NAME}" ]]; then
     role_arn="$(aws iot describe-role-alias --region "${AWS_REGION}" --role-alias "${TES_ROLE_ALIAS}" \
@@ -125,6 +127,10 @@ resolve_greengrass_names_from_account() {
       TES_ROLE_NAME="${role_arn##*/}"
       info "Resolved TES IAM role name '${TES_ROLE_NAME}' from role alias."
     else
+      local expected_alias="CavalierGreengrassRoleAlias-${resource_suffix}"
+      if [[ "${TES_ROLE_ALIAS}" != "${expected_alias}" ]]; then
+        die "IoT role alias '${TES_ROLE_ALIAS}' not found in ${AWS_REGION}. For account ${acct} the CDK default is '${expected_alias}'. Unset TES_ROLE_ALIAS and TES_ROLE_NAME (they may be from another machine), then re-run."
+      fi
       die "IoT role alias '${TES_ROLE_ALIAS}' not found in ${AWS_REGION}. Deploy InfraStack (CDK) in this account/region, or set TES_ROLE_ALIAS / TES_ROLE_NAME explicitly."
     fi
   fi
