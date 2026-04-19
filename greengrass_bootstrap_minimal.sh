@@ -204,6 +204,11 @@ install_aws_cli_v2() {
 
 install_prereqs() {
   export DEBIAN_FRONTEND=noninteractive
+  # Recover from a half-finished apt/dpkg run (otherwise apt-get fails with
+  # "dpkg was interrupted, you must manually run sudo dpkg --configure -a").
+  info "Ensuring dpkg is configured (dpkg --configure -a)..."
+  dpkg --configure -a || die "dpkg --configure -a failed; fix broken packages on the host, then re-run this script."
+
   apt-get update -y
   apt-get install -y ca-certificates curl unzip openjdk-17-jre-headless
 
