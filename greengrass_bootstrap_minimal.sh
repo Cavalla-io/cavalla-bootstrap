@@ -33,6 +33,8 @@
 #   CREATE_THING_GROUP   if set to 1, create THING_GROUP when missing (needs iot:CreateThingGroup)
 #   DEPLOY_DEV_TOOLS     if set to 1, pass --deploy-dev-tools true on first install only (default: 0)
 #   SKIP_DOCKER          if set to 1, skip Docker Engine install (default: 0)
+#   GREENGRASS_NUCLEUS_VERSION  pinned nucleus zip (default: 2.17.0). Must stay compatible with
+#                        aws.greengrass.Cli in your Cavalla InfraStack deployment (same x.y.z series).
 #
 # AWS credentials: use sudo -E with exported keys, or AWS_PROFILE (see ensure_aws_credentials).
 #
@@ -43,6 +45,8 @@ set -euo pipefail
 
 THING_NAME="${THING_NAME:-${1:-}}"
 AWS_REGION="${AWS_REGION:-us-east-1}"
+GREENGRASS_NUCLEUS_VERSION="${GREENGRASS_NUCLEUS_VERSION:-2.17.0}"
+GREENGRASS_NUCLEUS_ZIP_URL="${GREENGRASS_NUCLEUS_ZIP_URL:-https://d2s8p88vqu9w66.cloudfront.net/releases/greengrass-${GREENGRASS_NUCLEUS_VERSION}.zip}"
 THING_GROUP="${THING_GROUP:-}"
 FLEET_ENV="${FLEET_ENV:-dev}"
 THING_POLICY_NAME="${THING_POLICY_NAME:-}"
@@ -247,8 +251,8 @@ install_greengrass() (
   tmp_dir="$(mktemp -d /tmp/GreengrassInstaller-XXXXXX)"
   trap 'rm -f "${tmp_zip}"; rm -rf "${tmp_dir}"' EXIT
 
-  info "Downloading Greengrass Nucleus..."
-  curl -fsSL "https://d2s8p88vqu9w66.cloudfront.net/releases/greengrass-nucleus-latest.zip" -o "${tmp_zip}"
+  info "Downloading Greengrass Nucleus ${GREENGRASS_NUCLEUS_VERSION}..."
+  curl -fsSL "${GREENGRASS_NUCLEUS_ZIP_URL}" -o "${tmp_zip}"
   unzip -q "${tmp_zip}" -d "${tmp_dir}"
 
   jar="${tmp_dir}/lib/Greengrass.jar"

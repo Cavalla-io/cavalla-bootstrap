@@ -40,6 +40,8 @@ sudo -E ./greengrass_bootstrap_minimal.sh
 | `CREATE_THING_GROUP` | Set to `1` to create `THING_GROUP` if missing (needs `iot:CreateThingGroup`). |
 | `DEPLOY_DEV_TOOLS` | Set to `1` to install the Greengrass CLI (default: `0`). |
 | `SKIP_DOCKER` | Set to `1` to skip Docker Engine install (default: `0`). |
+| `GREENGRASS_NUCLEUS_VERSION` | Pinned nucleus zip version (default: `2.17.0`). Must stay compatible with `aws.greengrass.Cli` in your Cavalla fleet deployment. |
+| `GREENGRASS_NUCLEUS_ZIP_URL` | Override the full download URL (defaults to CloudFront `greengrass-${GREENGRASS_NUCLEUS_VERSION}.zip`). |
 
 Credentials: export keys as above, or use `AWS_PROFILE` with an invoking user so the script can resolve `~/.aws` (see the script’s `ensure_aws_credentials`).
 
