@@ -229,6 +229,21 @@ else
   echo "--- Rust/cargo already installed ---"
 fi
 
+# Build deps for adamo-network (bindgen needs libclang)
+if ! dpkg -s libclang-dev >/dev/null 2>&1; then
+  echo "--- Installing libclang-dev (required by adamo-network bindgen) ---"
+  apt-get update -qq
+  apt-get install -y libclang-dev || echo "WARNING: libclang-dev install failed; cargo build may fail."
+fi
+
+# C toolchain + common dev libs for Rust native crate builds
+if ! dpkg -s build-essential >/dev/null 2>&1; then
+  echo "--- Installing build-essential, pkg-config, libssl-dev ---"
+  apt-get update -qq
+  apt-get install -y build-essential pkg-config libssl-dev || \
+    echo "WARNING: build-essential install failed; cargo build may fail."
+fi
+
 # Tailscale (optional, for admin HTTPS + fleet access)
 if [[ "${SKIP_TAILSCALE}" != "1" ]]; then
   if ! command -v tailscale >/dev/null 2>&1; then
