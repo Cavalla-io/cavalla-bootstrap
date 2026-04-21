@@ -14,7 +14,7 @@
 #
 # greengrass_bootstrap_minimal.sh in this repo is a thin wrapper that calls this file (backward compatible).
 #
-# Minimal env: THING_NAME, AWS_REGION, FLEET_ENV, THING_GROUP, THING_POLICY_NAME, TES_ROLE_*, CREATE_THING_GROUP,
+# Minimal env: THING_NAME, AWS_REGION, FLEET_ENV, THING_GROUP, THING_TYPE, THING_POLICY_NAME, TES_ROLE_*, CREATE_THING_GROUP,
 #   DEPLOY_DEV_TOOLS, SKIP_DOCKER, GREENGRASS_NUCLEUS_* (see comments in minimal section below).
 #
 # One-time cloud: deploy Cavalla InfraStack. See AWS Greengrass manual install docs.
@@ -39,6 +39,7 @@ AWS_REGION="${AWS_REGION:-us-east-1}"
 STAGE="${STAGE:-dev}"
 AWS_ACCOUNT_ID="${AWS_ACCOUNT_ID:-}"
 THING_GROUP="${THING_GROUP:-}"
+THING_TYPE="${THING_TYPE:-forklift-robot}"
 THING_POLICY_NAME="${THING_POLICY_NAME:-}"
 TES_ROLE_ALIAS="${TES_ROLE_ALIAS:-}"
 TES_ROLE_NAME="${TES_ROLE_NAME:-}"
@@ -240,7 +241,8 @@ fi
 if ! dpkg -s build-essential >/dev/null 2>&1; then
   echo "--- Installing build-essential, pkg-config, libssl-dev ---"
   apt-get update -qq
-  apt-get install -y build-essential pkg-config libssl-dev || \
+  apt-get install -y build-essential pkg-config libssl-dev \
+    libv4l-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev || \
     echo "WARNING: build-essential install failed; cargo build may fail."
 fi
 
@@ -345,6 +347,7 @@ fi
 
 echo "=== Cavalier Greengrass Bootstrap ==="
 echo "Thing name:   ${THING_NAME}"
+echo "Thing type:   ${THING_TYPE}"
 echo "Region:       ${AWS_REGION}"
 echo "Stage:        ${STAGE}"
 echo "Thing group:  ${THING_GROUP}"
@@ -417,6 +420,15 @@ else
     --deploy-dev-tools true
 
   rm -rf /tmp/GreengrassInstaller
+fi
+
+# Attach the IoT Thing Type (created by CDK) to this device.
+if [[ -n "${THING_TYPE}" ]]; then
+  echo "--- Attaching thing type '${THING_TYPE}' to '${THING_NAME}' ---"
+  aws iot update-thing --region "${AWS_REGION}" \
+    --thing-name "${THING_NAME}" \
+    --thing-type-name "${THING_TYPE}" 2>/dev/null \
+    || echo "WARNING: Could not attach thing type '${THING_TYPE}' (type may not exist yet)."
 fi
 
 # ---------------------------------------------------------------------------
@@ -510,6 +522,7 @@ mkdir -p "${BOOTSTRAP_DIR}"
 cat <<EOF > "${BOOTSTRAP_FILE}"
 {
   "thingName": "${THING_NAME}",
+  "thingType": "${THING_TYPE}",
   "awsRegion": "${AWS_REGION}",
   "awsAccountId": "${AWS_ACCOUNT_ID}",
   "stage": "${STAGE}",
@@ -546,6 +559,7 @@ AWS_REGION="${AWS_REGION:-us-east-1}"
 GREENGRASS_NUCLEUS_VERSION="${GREENGRASS_NUCLEUS_VERSION:-2.17.0}"
 GREENGRASS_NUCLEUS_ZIP_URL="${GREENGRASS_NUCLEUS_ZIP_URL:-https://d2s8p88vqu9w66.cloudfront.net/releases/greengrass-${GREENGRASS_NUCLEUS_VERSION}.zip}"
 THING_GROUP="${THING_GROUP:-}"
+THING_TYPE="${THING_TYPE:-forklift-robot}"
 FLEET_ENV="${FLEET_ENV:-dev}"
 THING_POLICY_NAME="${THING_POLICY_NAME:-}"
 TES_ROLE_NAME="${TES_ROLE_NAME:-}"
@@ -799,6 +813,15 @@ main() {
   ensure_thing_group
   ensure_greengrass_user
   install_greengrass
+
+  # Attach the IoT Thing Type (created by CDK) to this device.
+  if [[ -n "${THING_TYPE}" ]]; then
+    info "Attaching thing type '${THING_TYPE}' to '${THING_NAME}'..."
+    aws iot update-thing --region "${AWS_REGION}" \
+      --thing-name "${THING_NAME}" \
+      --thing-type-name "${THING_TYPE}" 2>/dev/null \
+      || info "WARNING: Could not attach thing type '${THING_TYPE}' (type may not exist yet)."
+  fi
 
   echo
   info "Done. Check: sudo systemctl status greengrass"
