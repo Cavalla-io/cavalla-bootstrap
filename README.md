@@ -24,9 +24,21 @@ TAG=v0.1.0   # use a real release tag in production
 curl -fsSL -o greengrass_bootstrap.sh \
   "https://raw.githubusercontent.com/Cavalla-io/cavalla-bootstrap/${TAG}/greengrass_bootstrap.sh"
 chmod +x greengrass_bootstrap.sh
-# review the script, then on the robot:
-export AWS_PROFILE=your-profile   # or temporary keys
-sudo -E ./greengrass_bootstrap.sh --full-cavalier-robot my-robot-thing --stage dev
+```
+
+On your workstation, get temporary credentials from AWS SSO:
+
+```bash
+aws sso login --profile cavalla-main
+aws configure export-credentials --profile cavalla-main --format env
+```
+
+Copy the output (`export AWS_ACCESS_KEY_ID=…` etc.) into the **robot's** terminal, then:
+
+```bash
+unset AWS_PROFILE
+THING_NAME=my-robot-thing
+sudo -E ./greengrass_bootstrap.sh --full-cavalier-robot "$THING_NAME" --stage dev
 ```
 
 ### Backward compatibility
